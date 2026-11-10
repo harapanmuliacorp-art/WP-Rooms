@@ -12,7 +12,7 @@
     e.preventDefault(); const button = W.$('#submit-booking'); W.setBusy(button, true, 'Mengirim…');
     try {
       if (!room) throw new Error('Data kamar belum siap. Muat ulang halaman.');
-      const data = { id_kamar: roomId, nama: W.$('#nama').value.trim(), instansi: W.$('#instansi').value.trim(), nip: W.$('#nip').value.trim(), hp: W.$('#hp').value.trim(), email: W.$('#email').value.trim(), jenis_tamu: typeEl.value, checkin: ciEl.value, checkout: coEl.value, jumlah_tamu: Number(W.$('#jumlah-tamu').value), keperluan: W.$('#keperluan').value.trim(), catatan: W.$('#catatan').value.trim() };
+      const data = { id_kamar: roomId, nama: W.$('#nama').value.trim(), instansi: W.$('#instansi').value.trim(), nip: W.$('#nip').value.trim(), hp: W.$('#hp').value.trim(), email: W.$('#email').value.trim(), jenis_tamu: typeEl.value, checkin: ciEl.value, checkout: coEl.value, jumlah_tamu: Number(W.$('#jumlah-tamu').value), keperluan: W.$('#keperluan').value.trim(), catatan: W.$('#catatan').value.trim(), website: (W.$('#website') || {}).value || '' };
       if (data.jenis_tamu === 'Dinas' && !fileEl.files[0]) throw new Error('Surat tugas wajib diunggah untuk tamu Dinas.');
       if (fileEl.files[0]) data.surat_tugas = await W.fileToPayload(fileEl.files[0]);
       const result = await W.api.post('createBooking', data);

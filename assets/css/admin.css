@@ -2,3 +2,6 @@
 @media(max-width:700px){.admin-layout{display:block}.sidebar{display:none}.admin-topbar{padding:13px 16px}.admin-content{padding:16px}.top-mobile{display:inline-flex}.admin-form{grid-template-columns:1fr}.stat-grid{gap:10px}.stat-card{padding:13px}.stat-card strong{font-size:1.3rem}}
 .sidebar.show-mobile{display:flex;position:fixed;z-index:30;inset:0 auto 0 0;width:250px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
 @media print{.sidebar,.admin-topbar,.admin-toolbar button,.btn,.action-btn{display:none!important}.admin-layout{display:block}.admin-content{padding:0}.admin-body{background:#fff}.panel,.stat-card{box-shadow:none;border:0}.admin-title{font-size:20pt}.admin-subtitle{margin-bottom:10px}.admin-table th,.admin-table td{padding:6px;font-size:9pt}}
+
+/* Galeri admin */
+.g-admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}.g-admin-card{margin:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff}.g-admin-card.off img{opacity:.4;filter:grayscale(1)}.g-admin-card img{display:block;width:100%;height:140px;object-fit:cover;background:#e5e9e3}.g-admin-card figcaption{padding:10px 12px 4px;display:flex;flex-direction:column;font-size:.85rem}.g-admin-card .inline-actions{padding:0 8px 10px}.g-preview img{max-height:130px;border-radius:10px;display:block;margin-bottom:6px}

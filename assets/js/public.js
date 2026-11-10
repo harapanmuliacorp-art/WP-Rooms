@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const W = window.WPR;
-  W.$$('.menu-toggle').forEach(btn => btn.addEventListener('click', () => W.$('.nav-links')?.classList.toggle('open')));
+  W.$$('.menu-toggle').forEach(btn => { btn.setAttribute('aria-expanded', 'false'); btn.addEventListener('click', () => { const open = W.$('.nav-links')?.classList.toggle('open'); btn.setAttribute('aria-expanded', String(!!open)); }); });
   const footerName = W.$('[data-wisma-name]');
   if (footerName) footerName.textContent = 'Wisma Pemda Jawa Tengah';
   if (W.api && (W.$('[data-address]') || W.$('[data-wa]'))) {
@@ -28,9 +28,10 @@
   }
   const featured = W.$('#featured-rooms');
   if (featured) {
-    W.api.get('listRooms').then(data => {
+    W.api.getCached('listRooms').then(data => {
       featured.replaceChildren();
-      data.rooms.slice(0, 3).forEach(room => featured.appendChild(roomCard(room)));
+      const seen = {}; const picks = data.rooms.filter(r => !seen[r.tipe] && (seen[r.tipe] = true)).slice(0, 3);
+      picks.forEach(room => featured.appendChild(roomCard(room)));
       if (!data.rooms.length) featured.appendChild(W.node('div', 'Kamar belum dipublikasikan. Silakan hubungi pengelola.', 'empty'));
     }).catch(err => W.alertBox(W.$('#featured-message'), err.message, 'error'));
   }
@@ -40,9 +41,9 @@
     if (room.foto_url) { const img = W.node('img'); img.src = room.foto_url; img.alt = 'Foto ' + room.tipe; img.loading = 'lazy'; photo.appendChild(img); }
     else photo.appendChild(W.node('span', 'Foto kamar akan ditampilkan', 'hint'));
     const body = W.node('div', null, 'room-card-body');
-    body.append(W.node('span', room.tipe, 'tag'), W.node('h3', room.nomor_kamar), W.node('div', 'Kapasitas ' + room.kapasitas + ' orang', 'room-meta'));
+    body.append( W.node('h3', room.tipe + ' · Kamar ' + room.nomor_kamar), W.node('div', 'Kapasitas ' + room.kapasitas + ' orang', 'room-meta'));
     body.appendChild(W.node('p', room.fasilitas || 'Fasilitas belum diperbarui.', 'hint'));
-    const price = W.node('div', null, 'room-price'); price.textContent = 'Dinas ' + W.money(room.harga_dinas) + ' / malam'; body.appendChild(price);
+    const price = W.node('div', null, 'room-price'); price.textContent = 'Umum ' + W.money(room.harga_umum) + ' · Dinas ' + W.money(room.harga_dinas) + ' / malam'; body.appendChild(price);
     const actions = W.node('div', null, 'room-card-actions'); const link = W.node('a', 'Lihat detail', 'btn btn-outline btn-small'); link.href = 'detail.html?id=' + encodeURIComponent(room.id); actions.appendChild(link); body.appendChild(actions); card.append(photo, body); return card;
   }
   W.renderRoomCard = roomCard;

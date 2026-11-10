@@ -101,6 +101,11 @@
     });
   }
   function get(action, params) { return tracked(() => getRaw(action, params)); }
+  function getCached(action, params, ttlMs) {
+    const key = 'wpr_c_' + action + '_' + JSON.stringify(params || {}); const ttl = ttlMs || 120000;
+    try { const hit = JSON.parse(sessionStorage.getItem(key) || 'null'); if (hit && Date.now() - hit.t < ttl) return Promise.resolve(hit.d); } catch (_) {}
+    return get(action, params).then(d => { try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), d })); } catch (_) {} return d; });
+  }
   function post(action, data, token) { return tracked(() => postRaw(action, data, token)); }
-  window.WPR = Object.assign(window.WPR || {}, { api: { get, post } });
+  window.WPR = Object.assign(window.WPR || {}, { api: { get, getCached, post } });
 })();

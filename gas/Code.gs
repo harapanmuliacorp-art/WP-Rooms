@@ -23,6 +23,7 @@ const APP = {
     Sesi: ['token', 'user_id', 'expired_at'],
     Pengaturan: ['key', 'value'],
     Log: ['timestamp', 'user', 'aksi', 'detail'],
+    Galeri: ['id', 'judul', 'kategori', 'foto_url', 'file_id', 'urutan', 'status_aktif', 'dibuat'],
     LogNotif: ['timestamp', 'kode_booking', 'tujuan', 'jenis', 'status', 'respons_api']
   }
 };
@@ -36,7 +37,9 @@ function doGet(e) {
       case 'health': result = { ok: true, app: APP.NAME, time: new Date().toISOString() }; break;
       case 'publicInfo': result = apiPublicInfo_(); break;
       case 'listRooms': result = apiListRooms_(); break;
+      case 'listGallery': result = apiGallery_(); break;
       case 'getRoom': result = apiGetRoom_(params.id); break;
+      case 'availableRooms': result = apiAvailableRooms_(params.checkin, params.checkout); break;
       case 'availability': result = apiAvailability_(params.id, params.checkin, params.checkout); break;
       case 'calendarAvailability': result = apiCalendarAvailability_(params.id, params.from, params.days); break;
       case 'result': result = apiReadResult_(params.request_id); break;
@@ -83,6 +86,9 @@ function dispatchPost_(p) {
     case 'resendNotification': return resendNotification_(p.token, p.data || {});
     case 'adminRooms': return adminRooms_(p.token);
     case 'saveRoom': return saveRoom_(p.token, p.data || {});
+    case 'adminGallery': return adminGallery_(p.token);
+    case 'saveGallery': return saveGallery_(p.token, p.data || {});
+    case 'deleteGallery': return deleteGallery_(p.token, p.data || {});
     case 'occupancy': return occupancy_(p.token, p.data || {});
     case 'report': return report_(p.token, p.data || {});
     case 'adminUsers': return adminUsers_(p.token);
@@ -141,12 +147,32 @@ function rows_(name) {
     return obj;
   });
 }
+/* ---- Cache baca publik (CacheService). Dibersihkan otomatis saat sheet terkait ditulis. ---- */
+function cached_(key, seconds, fn) {
+  const c = CacheService.getScriptCache();
+  try { const hit = c.get(key); if (hit) return JSON.parse(hit); } catch (_) {}
+  const value = fn();
+  try { c.put(key, JSON.stringify(value), seconds); } catch (_) {}
+  return value;
+}
+function bust_(name) {
+  const map = { Kamar: ['C_rooms'], Pesanan: ['C_active'], Pengaturan: ['C_info'], Galeri: ['C_gallery'] };
+  if (map[name]) { try { CacheService.getScriptCache().removeAll(map[name]); } catch (_) {} }
+}
+function activeRooms_() { return cached_('C_rooms', 600, () => rows_('Kamar').filter(r => truthy_(r.status_aktif)).map(publicRoom_)); }
+function activeBookings_() {
+  return cached_('C_active', 120, () => rows_('Pesanan')
+    .filter(b => APP.ACTIVE_STATUSES.indexOf(String(b.status)) >= 0)
+    .map(b => ({ id_kamar: String(b.id_kamar), checkin: dateStr_(b.checkin), checkout: dateStr_(b.checkout) })));
+}
 function append_(name, obj) {
+  bust_(name);
   const sh = sheet_(name);
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
   sh.appendRow(headers.map(h => obj[h] === undefined ? '' : obj[h]));
 }
 function updateBy_(name, key, value, patch) {
+  bust_(name);
   const sh = sheet_(name);
   const data = sh.getDataRange().getValues();
   if (data.length < 2) return false;
@@ -300,39 +326,45 @@ function installDailyTrigger() {
 
 /* -------------------------- PUBLIC ENDPOINTS ------------------------- */
 function apiPublicInfo_() {
+  return cached_('C_info', 600, apiPublicInfoRaw_);
+}
+function apiPublicInfoRaw_() {
   return { ok: true, info: { nama_wisma: setting_('nama_wisma', 'Wisma Pemda Jawa Tengah'), alamat: setting_('alamat', ''), wa_admin: normalizePhone_(setting_('wa_admin', '')), jam_checkin: setting_('jam_checkin', '14:00'), jam_checkout: setting_('jam_checkout', '12:00') } };
 }
 function apiListRooms_() {
-  const rooms = rows_('Kamar').filter(r => truthy_(r.status_aktif));
-  return { ok: true, rooms: rooms.map(publicRoom_) };
+  return { ok: true, rooms: activeRooms_() };
 }
 function apiGetRoom_(id) {
-  const room = findBy_('Kamar', 'id', id);
-  if (!room || !truthy_(room.status_aktif)) throw new Error('Kamar tidak ditemukan atau sedang tidak tersedia.');
-  return { ok: true, room: publicRoom_(room) };
+  const room = activeRooms_().find(r => r.id === String(id));
+  if (!room) throw new Error('Kamar tidak ditemukan atau sedang tidak tersedia.');
+  return { ok: true, room };
 }
 function publicRoom_(r) {
   const photos = String(r.foto_url || '').split(/[\n,]+/).map(x => publicImageUrl_(x.trim())).filter(Boolean);
   return { id: String(r.id), nomor_kamar: String(r.nomor_kamar), tipe: String(r.tipe), kapasitas: Number(r.kapasitas) || 0, harga_dinas: Number(r.harga_dinas) || 0, harga_umum: Number(r.harga_umum) || 0, fasilitas: String(r.fasilitas || ''), foto_url: photos[0] || '', foto_urls: photos, status_aktif: truthy_(r.status_aktif) };
 }
+function apiAvailableRooms_(checkin, checkout) {
+  validateDates_(checkin, checkout);
+  const busy = {};
+  activeBookings_().forEach(b => { if (overlaps_(checkin, checkout, b.checkin, b.checkout)) busy[b.id_kamar] = true; });
+  return { ok: true, available_ids: activeRooms_().filter(r => !busy[r.id]).map(r => r.id) };
+}
 function apiAvailability_(id, checkin, checkout) {
   validateDates_(checkin, checkout);
-  const room = findBy_('Kamar', 'id', id);
-  if (!room || !truthy_(room.status_aktif)) throw new Error('Kamar tidak tersedia.');
-  const conflicts = rows_('Pesanan').filter(b => String(b.id_kamar) === String(id) && APP.ACTIVE_STATUSES.indexOf(String(b.status)) >= 0 && overlaps_(checkin, checkout, dateStr_(b.checkin), dateStr_(b.checkout)));
-  return { ok: true, available: conflicts.length === 0, conflicts: conflicts.map(b => ({ checkin: dateStr_(b.checkin), checkout: dateStr_(b.checkout) })) };
+  if (!activeRooms_().some(r => r.id === String(id))) throw new Error('Kamar tidak tersedia.');
+  const conflicts = activeBookings_().filter(b => b.id_kamar === String(id) && overlaps_(checkin, checkout, b.checkin, b.checkout));
+  return { ok: true, available: conflicts.length === 0, conflicts: conflicts.map(b => ({ checkin: b.checkin, checkout: b.checkout })) };
 }
 function apiCalendarAvailability_(id, from, count) {
   const days = Math.min(62, Math.max(7, Number(count) || 30));
   const start = String(from || isoToday_());
   validateDates_(start, addDays_(start, days));
-  const room = findBy_('Kamar', 'id', id);
-  if (!room || !truthy_(room.status_aktif)) throw new Error('Kamar tidak tersedia.');
-  const bookings = rows_('Pesanan').filter(b => String(b.id_kamar) === String(id) && APP.ACTIVE_STATUSES.indexOf(String(b.status)) >= 0);
+  if (!activeRooms_().some(r => r.id === String(id))) throw new Error('Kamar tidak tersedia.');
+  const bookings = activeBookings_().filter(b => b.id_kamar === String(id));
   const result = [];
   for (let i = 0; i < days; i++) {
     const day = addDays_(start, i);
-    const busy = bookings.some(b => dateStr_(b.checkin) <= day && dateStr_(b.checkout) > day);
+    const busy = bookings.some(b => b.checkin <= day && b.checkout > day);
     result.push({ tanggal: day, tersedia: !busy });
   }
   return { ok: true, days: result };
@@ -347,6 +379,7 @@ function apiTrack_(code, phone) {
   return { ok: true, booking: { kode_booking: String(b.kode_booking), nama: String(b.nama), tipe_kamar: room ? String(room.tipe) + ' — ' + String(room.nomor_kamar) : '-', checkin: dateStr_(b.checkin), checkout: dateStr_(b.checkout), malam: Number(b.malam), jumlah_tamu: Number(b.jumlah_tamu), jenis_tamu: String(b.jenis_tamu), total: Number(b.total), status: String(b.status), alasan_penolakan: String(b.alasan_penolakan || ''), batas_bayar: dateTime_(b.batas_bayar), rekening: String(b.status) === 'Disetujui' ? setting_('rekening', '') : '', bukti_bayar_tersedia: Boolean(b.bukti_bayar_url) }, history };
 }
 function createBooking_(d) {
+  if (d.website) throw new Error('Permintaan tidak dapat diproses.');
   const name = required_(d.nama, 'Nama pemesan');
   if (name.length > 120) throw new Error('Nama maksimal 120 karakter.');
   const instansi = required_(d.instansi, 'Instansi / asal');
@@ -473,7 +506,12 @@ function login_(d) {
 }
 function sessionUser_(token, allowMustChange) {
   if (!token) throw new Error('Sesi tidak ditemukan. Silakan login kembali.');
-  const session = rows_('Sesi').find(s => String(s.token) === String(token));
+  const cache = CacheService.getScriptCache(); const ck = 'S_' + token; let session = null;
+  try { const hit = cache.get(ck); if (hit) session = JSON.parse(hit); } catch (_) {}
+  if (!session) {
+    const row = rows_('Sesi').find(s => String(s.token) === String(token));
+    if (row) { session = { user_id: String(row.user_id), expired_at: row.expired_at instanceof Date ? row.expired_at.toISOString() : String(row.expired_at) }; try { cache.put(ck, JSON.stringify(session), 300); } catch (_) {} }
+  }
   if (!session || new Date(session.expired_at).getTime() <= Date.now()) throw new Error('Sesi telah kedaluwarsa. Silakan login kembali.');
   const user = findBy_('Pengguna', 'id', session.user_id);
   if (!user || !truthy_(user.aktif)) throw new Error('Akun tidak aktif.');
@@ -494,6 +532,7 @@ function changePassword_(token, d) {
 }
 function me_(token) { const u = sessionUser_(token, true); return { ok: true, user: publicUser_(u) }; }
 function logout_(token) {
+  try { CacheService.getScriptCache().remove('S_' + String(token || '')); } catch (_) {}
   const sh = sheet_('Sesi'); const data = sh.getDataRange().getValues();
   if (data.length > 1) { const col = data[0].map(String).indexOf('token'); for (let i = data.length - 1; i >= 1; i--) { if (String(data[i][col]) === String(token || '')) sh.deleteRow(i + 1); } }
   return { ok: true };
@@ -675,6 +714,86 @@ function sendWhatsApp_(phone, message, code, type) {
   } catch (err) { logNotif_(code, target, type, 'GAGAL', safeError_(err)); return { status: 'GAGAL' }; }
 }
 function logNotif_(code, target, type, status, response) { try { append_('LogNotif', { timestamp: new Date(), kode_booking: code || '', tujuan: target || '', jenis: type || '', status, respons_api: String(response || '').slice(0, 4000) }); } catch (e) { Logger.log('Gagal menulis LogNotif: ' + e); } }
+
+
+/* ------------------------------- GALERI ------------------------------ */
+// Foto galeri bersifat publik (tampil di website), berbeda dari berkas privat (bukti bayar, surat tugas).
+function ensureGallerySheet_() {
+  const ss = db_(); let sh = ss.getSheetByName('Galeri');
+  if (!sh) {
+    const headers = APP.SHEETS.Galeri; sh = ss.insertSheet('Galeri');
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#12345a').setFontColor('#ffffff'); sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function galleryItem_(r) {
+  return { id: String(r.id), judul: String(r.judul || ''), kategori: String(r.kategori || 'Umum'), foto_url: String(r.foto_url || ''), urutan: Number(r.urutan) || 0, status_aktif: truthy_(r.status_aktif) };
+}
+function sortGallery_(a, b) { return (a.urutan - b.urutan) || String(a.id).localeCompare(String(b.id)); }
+function apiGallery_() {
+  ensureGallerySheet_();
+  const items = cached_('C_gallery', 600, () => rows_('Galeri').map(galleryItem_).filter(i => i.status_aktif && publicImageUrl_(i.foto_url)).sort(sortGallery_).map(i => ({ id: i.id, judul: i.judul, kategori: i.kategori, src: i.foto_url })));
+  return { ok: true, items: items };
+}
+function adminGallery_(token) {
+  requireAdmin_(token); ensureGallerySheet_();
+  return { ok: true, items: rows_('Galeri').map(galleryItem_).sort(sortGallery_) };
+}
+function galleryFolder_() {
+  const props = PropertiesService.getScriptProperties(); let id = props.getProperty('GALLERY_FOLDER_ID'); let folder = null;
+  if (id) { try { folder = DriveApp.getFolderById(id); } catch (_) { folder = null; } }
+  if (!folder) { folder = DriveApp.createFolder('WP-Rooms Galeri Publik'); props.setProperty('GALLERY_FOLDER_ID', folder.getId()); }
+  return folder;
+}
+function saveGalleryFile_(file, judul) {
+  const checked = validateUpload_(file);
+  if (checked.mime === 'application/pdf') throw new Error('Foto galeri harus berupa JPG atau PNG.');
+  const blob = Utilities.newBlob(checked.bytes, checked.mime, 'Galeri-' + Date.now() + '.' + checked.ext);
+  const created = galleryFolder_().createFile(blob);
+  try { created.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (e) { created.setTrashed(true); throw new Error('Google Drive tidak mengizinkan berbagi publik. Gunakan opsi URL foto, atau minta admin Google Workspace mengizinkan berbagi file.'); }
+  return { file_id: created.getId(), url: 'https://lh3.googleusercontent.com/d/' + created.getId() + '=w1600' };
+}
+function saveGallery_(token, d) {
+  const user = requireAdmin_(token); ensureGallerySheet_();
+  const id = String(d.id || ''); const old = id ? findBy_('Galeri', 'id', id) : null;
+  if (id && !old) throw new Error('Foto tidak ditemukan.');
+  const item = {
+    id: old ? id : Utilities.getUuid(),
+    judul: String(d.judul || '').trim().slice(0, 80),
+    kategori: String(d.kategori || 'Umum').trim().slice(0, 30) || 'Umum',
+    urutan: isFinite(Number(d.urutan)) ? Number(d.urutan) : 0,
+    status_aktif: d.status_aktif === undefined ? true : !!d.status_aktif,
+    foto_url: old ? String(old.foto_url || '') : '', file_id: old ? String(old.file_id || '') : '',
+    dibuat: old ? old.dibuat : new Date()
+  };
+  if (d.foto) {
+    const saved = saveGalleryFile_(d.foto, item.judul);
+    if (old && old.file_id) { try { DriveApp.getFileById(String(old.file_id)).setTrashed(true); } catch (_) {} }
+    item.foto_url = saved.url; item.file_id = saved.file_id;
+  } else if (d.foto_url) {
+    const u = String(d.foto_url).trim();
+    if (!publicImageUrl_(u)) throw new Error('URL foto harus HTTPS (bukan link drive.google.com) atau path assets/img/.');
+    item.foto_url = u;
+  }
+  if (!item.foto_url) throw new Error('Pilih file foto atau isi URL foto.');
+  if (!item.judul) item.judul = 'Foto ' + item.kategori;
+  if (old) updateBy_('Galeri', 'id', id, item); else append_('Galeri', item);
+  bust_('Galeri');
+  saveLog_(user.email, 'SIMPAN_GALERI', 'Foto galeri "' + item.judul + '" disimpan.');
+  return { ok: true, item: galleryItem_(item) };
+}
+function deleteGallery_(token, d) {
+  const user = requireAdmin_(token); ensureGallerySheet_();
+  const id = required_(d.id, 'ID foto'); const old = findBy_('Galeri', 'id', id);
+  if (!old) throw new Error('Foto tidak ditemukan.');
+  const sh = sheet_('Galeri'); const data = sh.getDataRange().getValues(); const col = data[0].map(String).indexOf('id');
+  for (let r = 1; r < data.length; r++) { if (String(data[r][col]) === id) { sh.deleteRow(r + 1); break; } }
+  if (old.file_id) { try { DriveApp.getFileById(String(old.file_id)).setTrashed(true); } catch (_) {} }
+  bust_('Galeri');
+  saveLog_(user.email, 'HAPUS_GALERI', 'Foto galeri "' + old.judul + '" dihapus.');
+  return { ok: true };
+}
 
 /* ---------------------------- FILES / UTILS -------------------------- */
 function validateUpload_(file) {

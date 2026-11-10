@@ -3,7 +3,8 @@
   if (!id) { W.alertBox(W.$('#detail-message'), 'ID kamar tidak ditemukan.', 'error'); host.textContent = ''; return; }
   const ci = W.query('checkin'); const co = W.query('checkout'); if (ci) W.$('#availability-in').value = ci; if (co) W.$('#availability-out').value = co;
   W.$('#availability-in').min = W.todayISO(); W.$('#availability-out').min = W.todayISO();
-  W.api.get('getRoom', { id }).then(data => { room = data.room; render(); loadCalendar(); }).catch(err => { host.textContent = ''; W.alertBox(W.$('#detail-message'), err.message, 'error'); });
+  loadCalendar();
+  W.api.getCached('getRoom', { id }).then(data => { room = data.room; render(); syncBookLink(); }).catch(err => { host.textContent = ''; W.alertBox(W.$('#detail-message'), err.message, 'error'); });
   function loadCalendar() {
     const target = W.$('#room-calendar');
     target.replaceChildren();
@@ -20,11 +21,16 @@
       });
     }).catch(err => { target.replaceChildren(W.node('span', 'Kalender belum dapat dimuat: ' + err.message, 'hint')); });
   }
+  function syncBookLink() {
+    const a = W.$('#availability-in').value, b = W.$('#availability-out').value; const btn = W.$('.detail-side a.btn-gold');
+    if (btn) btn.href = 'pesan.html?id=' + encodeURIComponent(id) + (a && b && b > a ? '&checkin=' + a + '&checkout=' + b : '');
+  }
+  ['#availability-in', '#availability-out'].forEach(sel => W.$(sel).addEventListener('change', syncBookLink));
   function render() {
     host.replaceChildren(); const grid = W.node('div', null, 'detail-grid'); const left = W.node('div'); const photo = W.node('div', null, 'detail-photo');
     if (room.foto_url) { const img = W.node('img'); img.src = room.foto_url; img.alt = 'Foto kamar ' + room.nomor_kamar; photo.appendChild(img); } else photo.appendChild(W.node('span', 'Foto kamar belum tersedia', 'hint'));
     left.appendChild(photo);
-    if (room.foto_urls && room.foto_urls.length > 1) { const gallery = W.node('div', null, 'photo-gallery'); room.foto_urls.slice(1).forEach((src, i) => { const img = W.node('img'); img.src = src; img.alt = 'Galeri kamar ' + room.nomor_kamar + ' ' + (i + 2); gallery.appendChild(img); }); left.appendChild(gallery); }
+    if (room.foto_urls && room.foto_urls.length > 1) { const gallery = W.node('div', null, 'photo-gallery'); room.foto_urls.slice(1).forEach((src, i) => { const img = W.node('img'); img.src = src; img.alt = 'Galeri kamar ' + room.nomor_kamar + ' ' + (i + 2); img.loading = 'lazy'; img.decoding = 'async'; gallery.appendChild(img); }); left.appendChild(gallery); }
     left.append(W.node('h2', room.tipe + ' — ' + room.nomor_kamar)); left.appendChild(W.node('p', room.fasilitas || 'Fasilitas belum diperbarui.'));
     const side = W.node('aside', null, 'detail-side'); side.append(W.node('span', room.tipe, 'tag'), W.node('h2', room.nomor_kamar), W.node('p', 'Kapasitas maksimal ' + room.kapasitas + ' orang.'));
     const prices = W.node('div', null, 'price-list'); const p1 = W.node('div', null, 'price-box'); p1.append(W.node('small', 'Tarif Dinas'), W.node('strong', W.money(room.harga_dinas) + ' / malam')); const p2 = W.node('div', null, 'price-box'); p2.append(W.node('small', 'Tarif Umum'), W.node('strong', W.money(room.harga_umum) + ' / malam')); prices.append(p1,p2); side.appendChild(prices);

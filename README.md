@@ -57,3 +57,12 @@ WP-Rooms/
 Nama awal wisma adalah `Wisma Pemda Jawa Tengah`. Alamat, WA admin, rekening, dan tarif resmi sengaja tidak direkayasa. `setupDatabase()` mengisi placeholder dan 26 kamar contoh nonaktif/bertarif nol. Ganti semua itu dengan data resmi sebelum publikasi. Lihat bagian keterbatasan dan prosedur izin Drive di panduan deploy.
 
 **Belum terhubung ke akun produksi:** file ini adalah source code lengkap untuk dipasang. Spreadsheet ID telah disiapkan pada konfigurasi backend. URL Web App yang sudah ada pada `assets/js/config.js` perlu diverifikasi dengan deployment Code.gs terbaru. Tarif, alamat, rekening, dan data kamar resmi tetap harus dilengkapi pengelola.
+
+## Refresh tampilan (konten beranda, galeri, WhatsApp, SEO)
+
+- `assets/js/konten.js` — edit fasilitas, wisata sekitar, ulasan, FAQ, link peta, dan gambar Open Graph. Bagian yang kosong otomatis tersembunyi.
+- **Galeri dikelola dari Admin > Galeri Foto** (unggah banyak foto sekaligus, edit, sembunyikan, hapus). Data disimpan di sheet `Galeri`, file di folder Drive "WP-Rooms Galeri Publik". `assets/js/galeri-data.js` hanya daftar foto contoh yang dipakai selama galeri admin masih kosong.
+- **Setelah memperbarui `gas/Code.gs`:** salin ulang ke Apps Script, lalu Deploy > Kelola deployment > Edit > Versi baru > Deploy (URL `/exec` tetap sama). Sheet `Galeri` dibuat otomatis.
+- Foto hero: simpan foto asli sebagai `assets/img/hero.jpg` (lebar ~1600px) — otomatis dipakai menggantikan foto contoh.
+- Tombol WhatsApp memakai nomor dari Admin > Pengaturan; peta memakai alamat dari Pengaturan yang sama.
+- Link Login Admin tidak lagi ada di footer publik: buka langsung `admin/login.html`.

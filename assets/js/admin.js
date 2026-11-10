@@ -1,6 +1,6 @@
 (function () {
   'use strict'; const W = window.WPR; const token = localStorage.getItem('wpr_admin_token') || ''; const page = document.body.dataset.adminPage || '';
-  const links = [ ['dashboard','dashboard.html','Dashboard'], ['pesanan','pesanan.html','Pesanan'], ['kamar','kamar.html','Kamar'], ['kalender','kalender.html','Kalender Okupansi'], ['laporan','laporan.html','Laporan'], ['pengguna','pengguna.html','Pengguna'], ['pengaturan','pengaturan.html','Pengaturan'] ];
+  const links = [ ['dashboard','dashboard.html','Dashboard'], ['pesanan','pesanan.html','Pesanan'], ['kamar','kamar.html','Kamar'], ['galeri','galeri.html','Galeri Foto'], ['kalender','kalender.html','Kalender Okupansi'], ['laporan','laporan.html','Laporan'], ['pengguna','pengguna.html','Pengguna'], ['pengaturan','pengaturan.html','Pengaturan'] ];
   const sidebar = W.$('#admin-sidebar');
   if (sidebar) {
     const brand = W.node('div',null,'brand'); const img = W.node('img'); img.src='../assets/img/logo.svg'; img.alt=''; brand.append(img); const label = W.node('span','WP-ROOMS'); label.appendChild(W.node('small','ADMIN PANEL')); brand.appendChild(label); sidebar.appendChild(brand);
